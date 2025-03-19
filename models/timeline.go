@@ -3,39 +3,34 @@ package models
 import (
         "time"
 
+        "github.com/google/uuid"
         "gorm.io/gorm"
 )
 
-// EventType represents the type of timeline event
-type EventType string
-
-// Event types
-const (
-        EventTypeClientCreated EventType = "CLIENT_CREATED"
-        EventTypeEmailSent     EventType = "EMAIL_SENT"
-        EventTypeEmailReceived EventType = "EMAIL_RECEIVED"
-        EventTypeChatStarted   EventType = "CHAT_STARTED"
-        EventTypeChatMessage   EventType = "CHAT_MESSAGE"
-        EventTypeNote          EventType = "NOTE"
-        EventTypeTask          EventType = "TASK"
-)
-
-// TimelineEvent represents a chronological record of client interactions
+// TimelineEvent represents a timeline event in the system
 type TimelineEvent struct {
-        ID            uint           `gorm:"primaryKey" json:"id"`
-        ClientID      uint           `gorm:"not null" json:"clientId"`
-        UserID        uint           `json:"userId,omitempty"`
-        Type          EventType      `gorm:"size:20;not null" json:"type"`
-        Title         string         `gorm:"size:100;not null" json:"title"`
-        Description   string         `gorm:"type:text" json:"description,omitempty"`
-        ReferenceID   uint           `json:"referenceId,omitempty"`
-        ReferenceType string         `gorm:"size:50" json:"referenceType,omitempty"`
-        Timestamp     time.Time      `json:"timestamp"`
-        CreatedAt     time.Time      `json:"createdAt"`
-        UpdatedAt     time.Time      `json:"updatedAt"`
-        DeletedAt     gorm.DeletedAt `gorm:"index" json:"-"`
+        ID            uuid.UUID  `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
+        EventType     string     `gorm:"type:varchar(50);not null" json:"eventType"`
+        Title         string     `gorm:"type:varchar(255);not null" json:"title"`
+        Content       string     `gorm:"type:text" json:"content"`
+        ClientID      uuid.UUID  `gorm:"type:uuid;not null" json:"clientId"`
+        UserID        uuid.UUID  `gorm:"type:uuid;not null" json:"userId"`
+        EventableType string     `gorm:"type:varchar(50);not null" json:"eventableType"`
+        EventableID   uuid.UUID  `gorm:"type:uuid;not null" json:"eventableId"`
+        EventTime     time.Time  `gorm:"not null" json:"eventTime"`
+        CreatedAt     time.Time  `gorm:"default:CURRENT_TIMESTAMP" json:"createdAt"`
+        UpdatedAt     time.Time  `gorm:"default:CURRENT_TIMESTAMP;autoUpdateTime" json:"updatedAt"`
+        
+        // Relations
+        Client        Client     `gorm:"foreignKey:ClientID" json:"client"`
+        User          User       `gorm:"foreignKey:UserID" json:"user"`
+}
 
-        // Relationships
-        Client Client `gorm:"foreignKey:ClientID" json:"client"`
-        User   User   `gorm:"foreignKey:UserID" json:"user,omitempty"`
+// BeforeCreate is called before inserting a new timeline event into the database
+func (t *TimelineEvent) BeforeCreate(tx *gorm.DB) error {
+        // Generate UUID if not set
+        if t.ID == uuid.Nil {
+                t.ID = uuid.New()
+        }
+        return nil
 }

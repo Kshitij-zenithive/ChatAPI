@@ -1,116 +1,89 @@
-# CRM Core GraphQL Schema
+# GraphQL schema for CRM Communication API
+
+scalar UUID
 scalar Time
 
-# Root schema definitions
-type Query {
-  # User queries
-  me: User!
-  user(id: ID!): User
-  users: [User!]!
-  
-  # Client queries
-  client(id: ID!): Client
-  clients(limit: Int = 10, offset: Int = 0): [Client!]!
-  searchClients(query: String!): [Client!]!
-  
-  # Chat queries
-  chatThread(id: ID!): ChatThread
-  chatThreads(clientId: ID!): [ChatThread!]!
-  chatMessages(threadId: ID!, limit: Int = 20, offset: Int = 0): [ChatMessage!]!
-  
-  # Email queries
-  email(id: ID!): Email
-  emails(clientId: ID!, limit: Int = 10, offset: Int = 0): [Email!]!
-  
-  # Timeline queries
-  timelineEvents(clientId: ID!, limit: Int = 20, offset: Int = 0): [TimelineEvent!]!
-}
-
-type Mutation {
-  # User mutations
-  login(email: String!, password: String!): AuthPayload!
-  register(input: RegisterInput!): AuthPayload!
-  updateUser(id: ID!, input: UpdateUserInput!): User!
-  deleteUser(id: ID!): Boolean!
-  
-  # Client mutations
-  createClient(input: CreateClientInput!): Client!
-  updateClient(id: ID!, input: UpdateClientInput!): Client!
-  deleteClient(id: ID!): Boolean!
-  
-  # Chat mutations
-  createChatThread(clientId: ID!): ChatThread!
-  sendChatMessage(threadId: ID!, content: String!, mentions: [ID!]): ChatMessage!
-  markChatMessagesAsRead(threadId: ID!): Boolean!
-  
-  # Email mutations
-  sendEmail(clientId: ID!, subject: String!, body: String!): Email!
-  fetchEmails(userId: ID!): Boolean!
-}
-
-type Subscription {
-  # Chat subscriptions
-  chatMessageAdded(threadId: ID!): ChatMessage!
-  chatMessageUpdated(threadId: ID!): ChatMessage!
-  
-  # Timeline subscriptions
-  timelineEventAdded(clientId: ID!): TimelineEvent!
-}
-
-# Auth types
-type AuthPayload {
-  token: String!
-  user: User!
-}
-
-# User types
+# User represents a system user who can interact with clients
 type User {
-  id: ID!
+  id: UUID!
   name: String!
   email: String!
-  role: UserRole!
-  avatarUrl: String
+  role: String!
   createdAt: Time!
   updatedAt: Time!
 }
 
-enum UserRole {
-  ADMIN
-  MANAGER
-  AGENT
-}
-
-input RegisterInput {
-  name: String!
-  email: String!
-  password: String!
-  role: UserRole = AGENT
-}
-
-input UpdateUserInput {
-  name: String
-  email: String
-  password: String
-  role: UserRole
-  avatarUrl: String
-}
-
-# Client types
+# Client represents a customer in the CRM system
 type Client {
-  id: ID!
+  id: UUID!
   name: String!
   email: String!
   phone: String
   company: String
-  avatarUrl: String
   notes: String
-  tags: [String!]
-  assignedTo: User
   createdAt: Time!
   updatedAt: Time!
-  chatThreads: [ChatThread!]!
-  emails: [Email!]!
-  timelineEvents: [TimelineEvent!]!
+  # Relations
+  messages: [Message!]
+  emails: [Email!]
+  timeline: [TimelineEvent!]
+}
+
+# Message represents a chat message in the system
+type Message {
+  id: UUID!
+  content: String!
+  sender: User!
+  client: Client!
+  mentions: [User!]
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+# Email represents an email message in the system
+type Email {
+  id: UUID!
+  subject: String!
+  content: String!
+  sender: User!
+  client: Client!
+  attachments: [String!]
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+# TimelineEvent represents an activity in the client timeline
+type TimelineEvent {
+  id: UUID!
+  eventType: String!
+  description: String!
+  client: Client!
+  user: User!
+  relatedEntity: String # ID of related message, email, etc.
+  createdAt: Time!
+}
+
+# Auth represents authentication information
+type Auth {
+  token: String!
+  refreshToken: String!
+  user: User!
+}
+
+# Input types for mutations
+input RegisterInput {
+  name: String!
+  email: String!
+  password: String!
+}
+
+input LoginInput {
+  email: String!
+  password: String!
+}
+
+input GoogleLoginInput {
+  idToken: String!
 }
 
 input CreateClientInput {
@@ -118,91 +91,84 @@ input CreateClientInput {
   email: String!
   phone: String
   company: String
-  avatarUrl: String
   notes: String
-  tags: [String!]
-  assignedToId: ID
 }
 
 input UpdateClientInput {
+  id: UUID!
   name: String
   email: String
   phone: String
   company: String
-  avatarUrl: String
   notes: String
-  tags: [String!]
-  assignedToId: ID
 }
 
-# Chat types
-type ChatThread {
-  id: ID!
-  client: Client!
-  title: String
-  createdAt: Time!
-  updatedAt: Time!
-  messages: [ChatMessage!]!
-  unreadCount: Int!
-}
-
-type ChatMessage {
-  id: ID!
-  threadId: ID!
-  user: User!
+input CreateMessageInput {
   content: String!
-  mentions: [User!]
-  createdAt: Time!
-  updatedAt: Time!
-  readBy: [User!]!
+  clientId: UUID!
+  mentions: [UUID!]
 }
 
-# Email types
-type Email {
-  id: ID!
-  client: Client!
-  user: User!
+input CreateEmailInput {
   subject: String!
-  body: String!
-  direction: EmailDirection!
-  status: EmailStatus!
-  createdAt: Time!
-  updatedAt: Time!
+  content: String!
+  clientId: UUID!
+  attachments: [String!]
 }
 
-enum EmailDirection {
-  INBOUND
-  OUTBOUND
+# Queries
+type Query {
+  # User queries
+  me: User!
+  users: [User!]!
+  user(id: UUID!): User
+
+  # Client queries
+  clients: [Client!]!
+  client(id: UUID!): Client
+
+  # Message queries
+  messages(clientId: UUID!): [Message!]!
+  message(id: UUID!): Message
+
+  # Email queries
+  emails(clientId: UUID!): [Email!]!
+  email(id: UUID!): Email
+
+  # Timeline queries
+  timeline(clientId: UUID!): [TimelineEvent!]!
 }
 
-enum EmailStatus {
-  DRAFT
-  SENT
-  RECEIVED
-  FAILED
+# Mutations
+type Mutation {
+  # Auth mutations
+  register(input: RegisterInput!): Auth!
+  login(input: LoginInput!): Auth!
+  googleLogin(input: GoogleLoginInput!): Auth!
+  refreshToken(token: String!): Auth!
+
+  # Client mutations
+  createClient(input: CreateClientInput!): Client!
+  updateClient(input: UpdateClientInput!): Client!
+  deleteClient(id: UUID!): Boolean!
+
+  # Message mutations
+  createMessage(input: CreateMessageInput!): Message!
+  deleteMessage(id: UUID!): Boolean!
+
+  # Email mutations
+  createEmail(input: CreateEmailInput!): Email!
+  deleteEmail(id: UUID!): Boolean!
 }
 
-# Timeline types
-type TimelineEvent {
-  id: ID!
-  client: Client!
-  user: User
-  type: EventType!
-  title: String!
-  description: String
-  referenceId: ID
-  referenceType: String
-  timestamp: Time!
-  createdAt: Time!
-  updatedAt: Time!
-}
-
-enum EventType {
-  CLIENT_CREATED
-  EMAIL_SENT
-  EMAIL_RECEIVED
-  CHAT_STARTED
-  CHAT_MESSAGE
-  NOTE
-  TASK
+# Subscriptions for real-time updates
+type Subscription {
+  # Subscribe to new messages for a specific client
+  messageCreated(clientId: UUID!): Message!
+  
+  # Subscribe to new emails for a specific client
+  emailCreated(clientId: UUID!): Email!
+  
+  # Subscribe to timeline events for a specific client
+  timelineEventCreated(clientId: UUID!): TimelineEvent!
 }

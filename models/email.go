@@ -3,49 +3,45 @@ package models
 import (
         "time"
 
+        "github.com/google/uuid"
         "gorm.io/gorm"
 )
 
-// EmailDirection represents the direction of an email
-type EmailDirection string
+// EmailAttachment represents a file attachment to an email
+type EmailAttachment struct {
+        ID        uuid.UUID `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
+        EmailID   uuid.UUID `gorm:"type:uuid;not null" json:"emailId"`
+        Filename  string    `gorm:"type:varchar(255);not null" json:"filename"`
+        Path      string    `gorm:"type:varchar(255);not null" json:"path"`
+        Size      int64     `gorm:"type:bigint;not null" json:"size"`
+        CreatedAt time.Time `gorm:"default:CURRENT_TIMESTAMP" json:"createdAt"`
+        
+        // Relations
+        Email *Email `gorm:"foreignKey:EmailID" json:"-"`
+}
 
-// Email directions
-const (
-        EmailInbound  EmailDirection = "INBOUND"
-        EmailOutbound EmailDirection = "OUTBOUND"
-)
+// BeforeCreate is called before inserting a new email attachment into the database
+func (ea *EmailAttachment) BeforeCreate(tx *gorm.DB) error {
+        // Generate UUID if not set
+        if ea.ID == uuid.Nil {
+                ea.ID = uuid.New()
+        }
+        return nil
+}
 
-// EmailStatus represents the status of an email
-type EmailStatus string
-
-// Email statuses
-const (
-        EmailStatusDraft     EmailStatus = "DRAFT"
-        EmailStatusSent      EmailStatus = "SENT"
-        EmailStatusDelivered EmailStatus = "DELIVERED"
-        EmailStatusReceived  EmailStatus = "RECEIVED"
-        EmailStatusFailed    EmailStatus = "FAILED"
-)
-
-// Email represents an email in the system
-type Email struct {
-        ID           uint           `gorm:"primaryKey" json:"id"`
-        ClientID     uint           `gorm:"not null" json:"clientId"`
-        UserID       uint           `gorm:"not null" json:"userId"`
-        Subject      string         `gorm:"size:255;not null" json:"subject"`
-        Body         string         `gorm:"type:text;not null" json:"body"`
-        Direction    EmailDirection `gorm:"size:20;not null" json:"direction"`
-        Status       EmailStatus    `gorm:"size:20;not null" json:"status"`
-        ExternalID   string         `gorm:"size:255" json:"externalId,omitempty"`
-        FromEmail    string         `gorm:"size:255;not null" json:"fromEmail"`
-        ToEmail      string         `gorm:"size:255;not null" json:"toEmail"`
-        SentAt       time.Time      `json:"sentAt,omitempty"`
-        ReceivedAt   *time.Time     `json:"receivedAt,omitempty"`
-        CreatedAt    time.Time      `json:"createdAt"`
-        UpdatedAt    time.Time      `json:"updatedAt"`
-        DeletedAt    gorm.DeletedAt `gorm:"index" json:"-"`
-
-        // Relationships
-        Client Client `gorm:"foreignKey:ClientID" json:"client"`
-        User   User   `gorm:"foreignKey:UserID" json:"user"`
+// AfterCreate is called after inserting a new email into the database
+// It creates a timeline event for the email
+func (e *Email) AfterCreate(tx *gorm.DB) error {
+        timelineEvent := TimelineEvent{
+                EventType:     "email",
+                Title:         "Email sent: " + e.Subject,
+                Content:       e.Body,
+                ClientID:      e.ClientID,
+                UserID:        e.UserID,
+                EventableType: "Email",
+                EventableID:   e.ID,
+                EventTime:     time.Now(),
+        }
+        
+        return tx.Create(&timelineEvent).Error
 }

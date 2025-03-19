@@ -1,47 +1,55 @@
 package models
 
 import (
-        "time"
+	"time"
 
-        "gorm.io/gorm"
+	"github.com/google/uuid"
 )
 
-// Chat represents a chat thread in the system
-type Chat struct {
-        ID        uint           `gorm:"primaryKey" json:"id"`
-        ClientID  uint           `gorm:"not null" json:"clientId"`
-        Title     string         `gorm:"size:100" json:"title,omitempty"`
-        CreatedAt time.Time      `json:"createdAt"`
-        UpdatedAt time.Time      `json:"updatedAt"`
-        DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
-
-        // Relationships
-        Client   Client    `gorm:"foreignKey:ClientID" json:"client"`
-        Messages []Message `gorm:"foreignKey:ChatID" json:"messages,omitempty"`
+// ChatThread represents a conversation thread
+type ChatThread struct {
+	ID        uuid.UUID `json:"id" gorm:"type:uuid;primary_key"`
+	Title     string    `json:"title"`
+	ClientID  uuid.UUID `json:"client_id" gorm:"type:uuid"`
+	CreatedBy uuid.UUID `json:"created_by" gorm:"type:uuid"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// UnreadCount returns the count of unread messages in the chat thread
-func (c *Chat) UnreadCount(userID uint) int {
-        var count int64
-        // Count messages not read by this user
-        // This would typically be implemented as a database query
-        // But for simplicity, we'll use a placeholder implementation
-        return int(count)
+// ChatMessage represents a single message in a chat thread
+type ChatMessage struct {
+	ID        uuid.UUID `json:"id" gorm:"type:uuid;primary_key"`
+	ChatID    uuid.UUID `json:"chat_id" gorm:"type:uuid"`
+	SenderID  uuid.UUID `json:"sender_id" gorm:"type:uuid"`
+	Content   string    `json:"content"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// Message represents a chat message
-type Message struct {
-        ID        uint           `gorm:"primaryKey" json:"id"`
-        ChatID    uint           `gorm:"not null" json:"threadId"`
-        SenderID  uint           `gorm:"not null" json:"senderId"`
-        Content   string         `gorm:"type:text;not null" json:"content"`
-        CreatedAt time.Time      `json:"createdAt"`
-        UpdatedAt time.Time      `json:"updatedAt"`
-        DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+// Mention represents an @mention in a message
+type Mention struct {
+	ID        uuid.UUID `json:"id" gorm:"type:uuid;primary_key"`
+	MessageID uuid.UUID `json:"message_id" gorm:"type:uuid"`
+	UserID    uuid.UUID `json:"user_id" gorm:"type:uuid"`
+	CreatedAt time.Time `json:"created_at"`
+}
 
-        // Relationships
-        Chat     Chat   `gorm:"foreignKey:ChatID" json:"-"`
-        Sender   User   `gorm:"foreignKey:SenderID" json:"user"`
-        ReadBy   []User `gorm:"many2many:message_reads;" json:"readBy,omitempty"`
-        Mentions []User `gorm:"many2many:message_mentions;" json:"mentions,omitempty"`
+// MessageRead tracks when a user reads a message
+type MessageRead struct {
+	ID        uuid.UUID `json:"id" gorm:"type:uuid;primary_key"`
+	MessageID uuid.UUID `json:"message_id" gorm:"type:uuid"`
+	UserID    uuid.UUID `json:"user_id" gorm:"type:uuid"`
+	ReadAt    time.Time `json:"read_at"`
+}
+
+// WSMessage represents a WebSocket message structure
+type WSMessage struct {
+	Type      string      `json:"type"`
+	ChatID    uuid.UUID   `json:"chat_id"`
+	MessageID uuid.UUID   `json:"message_id,omitempty"`
+	UserID    uuid.UUID   `json:"user_id"`
+	Content   string      `json:"content,omitempty"`
+	Timestamp time.Time   `json:"timestamp"`
+	Mentions  []uuid.UUID `json:"mentions,omitempty"`
 }

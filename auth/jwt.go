@@ -1,187 +1,144 @@
 package auth
 
 import (
-	"context"
+	"crm-communication-api/models"
 	"errors"
-	"fmt"
-	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
-	initializers "crm-api/Initializers"
-	"crm-api/models"
-
-	"github.com/golang-jwt/jwt/v5"
+	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 )
 
-// var secretKey = []byte(os.Getenv("SECRET_KEY")) // Change this to a secure key
-var SecretKey = "abcdefghijklmnopqrstuvwxyz"
+// Secret keys for signing JWT tokens
+var (
+	AccessTokenSecretKey  = getEnvOrDefault("JWT_SECRET_KEY", "default_access_token_secret_key")
+	RefreshTokenSecretKey = getEnvOrDefault("REFRESH_TOKEN_SECRET_KEY", "default_refresh_token_secret_key")
+)
 
-// var refreshSecretKey = []byte(os.Getenv("REFRESH_SECRET_KEY"))
-
-var RefreshSecretKey = "This is my RefreshSecretKey"
-
-// Claims structure for JWT
+// Claims represents the JWT claims structure
 type Claims struct {
-	UserID   string `json:"user_id"`
-	Name     string `json:"name"`
-	Role     string `json:"role"`
-	Provider string `json:"provider"`
+	UserID       string `json:"user_id"`
+	Name         string `json:"name"`
+	Role         string `json:"role"`
+	AuthProvider string `json:"auth_provider"`
 	jwt.RegisteredClaims
 }
 
-func ExtractUserID(r *http.Request) (string, error) {
-	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" {
-		fmt.Println("Missing token")
-		return "", fmt.Errorf("missing token")
+// GenerateJWT creates a JWT token for a user
+func GenerateJWT(user *models.User, authProvider string, expiryHours int) (string, error) {
+	// Set expiration time
+	expirationTime := time.Now().Add(time.Duration(expiryHours) * time.Hour)
+
+	// Create JWT claims
+	claims := &Claims{
+		UserID:       user.ID.String(),
+		Name:         user.Name,
+		Role:         user.Role,
+		AuthProvider: authProvider,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expirationTime),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			NotBefore: jwt.NewNumericDate(time.Now()),
+			Issuer:    "crm-communication-api",
+			Subject:   user.ID.String(),
+		},
 	}
 
-	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			fmt.Println("Unexpected signing method in token")
+	// Create token with claims
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
-			return nil, fmt.Errorf("unexpected signing method")
+	// Sign the token with secret key
+	return token.SignedString([]byte(AccessTokenSecretKey))
+}
+
+// GenerateRefreshToken creates a refresh token for a user
+func GenerateRefreshToken(user *models.User, authProvider string) (string, error) {
+	// Set a longer expiration time for refresh token (e.g., 7 days)
+	refreshExpiryHours, _ := strconv.Atoi(getEnvOrDefault("REFRESH_TOKEN_EXPIRY", "168")) // Default: 7 days
+	
+	// Create JWT claims with longer expiration
+	expirationTime := time.Now().Add(time.Duration(refreshExpiryHours) * time.Hour)
+	claims := &Claims{
+		UserID:       user.ID.String(),
+		Name:         user.Name,
+		Role:         user.Role,
+		AuthProvider: authProvider,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expirationTime),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			NotBefore: jwt.NewNumericDate(time.Now()),
+			Issuer:    "crm-communication-api",
+			Subject:   user.ID.String(),
+		},
+	}
+
+	// Create and sign the refresh token
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(RefreshTokenSecretKey))
+}
+
+// ValidateJWT validates a JWT token and returns the claims
+func ValidateJWT(tokenString string) (*Claims, error) {
+	// Parse the token with claims
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		// Validate the alg is what we expect
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("unexpected signing method")
 		}
-		return []byte(SecretKey), nil
+		return []byte(AccessTokenSecretKey), nil
 	})
 
 	if err != nil {
-		fmt.Println("Invalid token:", err)
-		return "", fmt.Errorf("invalid token: %v", err)
+		return nil, err
 	}
 
-	// Extract user_id from claims
-	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-		fmt.Println("Valid token")
-		userID, ok := claims["user_id"] // Extract user_id from claims
-		if !ok {
-			fmt.Println("Invalid user ID in token")
-			return "", fmt.Errorf("invalid user ID in token")
-		}
-		return userID.(string), nil
+	// Validate the token and return claims
+	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+		return claims, nil
 	}
 
-	fmt.Println("Invalid token claims")
-	return "", fmt.Errorf("invalid token claims")
+	return nil, errors.New("invalid token")
 }
 
-// GenerateJWT generates a new token
-
-// StoreRefreshToken saves refresh token in the database
-func StoreRefreshToken(userID string, refreshToken string) error {
-	parsedUserID, err := uuid.Parse(userID)
-	if err != nil {
-		return err
-	}
-
-	var existingToken models.RefreshToken
-	result := initializers.DB.Where("user_id = ?", parsedUserID).First(&existingToken)
-
-	if result.Error != nil {
-		// If record is not found, create a new entry
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			refreshRecord := models.RefreshToken{
-				ID:        uuid.New(),
-				UserID:    parsedUserID,
-				Token:     refreshToken,
-				CreatedAt: time.Now(),
-				ExpiresAt: time.Now().Add(7 * 24 * time.Hour), // Expiry (7 days)
-			}
-			return initializers.DB.Create(&refreshRecord).Error
+// ValidateRefreshToken validates a refresh token and returns the claims
+func ValidateRefreshToken(tokenString string) (*Claims, error) {
+	// Parse the refresh token with claims
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		// Validate the alg is what we expect
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("unexpected signing method")
 		}
-		// Return error if it's not a "record not found" error
-		return result.Error
-	}
-
-	// If record exists, update the token and expiration time
-	existingToken.Token = refreshToken
-	existingToken.CreatedAt = time.Now()
-	existingToken.ExpiresAt = time.Now().Add(7 * 24 * time.Hour)
-	return initializers.DB.Save(&existingToken).Error
-}
-
-// ValidateRefreshToken checks if the refresh token is valid
-func ValidateRefreshToken(tokenString string) (jwt.MapClaims, error) {
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		return []byte(RefreshSecretKey), nil
-	}, jwt.WithValidMethods([]string{"HS256"}))
+		return []byte(RefreshTokenSecretKey), nil
+	})
 
 	if err != nil {
-		if errors.Is(err, jwt.ErrTokenExpired) {
-			return nil, fmt.Errorf("refresh token expired")
-		}
-		return nil, fmt.Errorf("invalid refresh token: %v", err)
+		return nil, err
 	}
 
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok || !token.Valid {
-		return nil, fmt.Errorf("invalid refresh token claims")
+	// Validate the token and return claims
+	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+		return claims, nil
 	}
 
-	return claims, nil
+	return nil, errors.New("invalid refresh token")
 }
 
-// RefreshAccessToken generates a new access token using a valid refresh token
-func RefreshAccessToken(refreshToken string) (string, error) {
-	claims, err := ValidateRefreshToken(refreshToken)
+// GetUserIDFromToken extracts the user ID from a token
+func GetUserIDFromToken(claims *Claims) (uuid.UUID, error) {
+	userID, err := uuid.Parse(claims.UserID)
 	if err != nil {
-		return "", err
+		return uuid.Nil, errors.New("invalid user ID in token")
 	}
-
-	// Retrieve user info
-	userID, ok := claims["user_id"].(string)
-	if !ok {
-		return "", errors.New("invalid user ID in refresh token")
-	}
-	var user models.User
-	result := initializers.DB.Where("id = ?", userID).First(&user)
-	if result.Error != nil {
-		return "", errors.New("user not found")
-	}
-
-	// Generate a new access token
-	accessExpiry, _ := strconv.Atoi(os.Getenv("JWT_EXPIRY_TIME"))
-	return GenerateJWT(&user, claims["auth_provider"].(string), accessExpiry, []byte(SecretKey))
+	return userID, nil
 }
 
-// Logout function to revoke refresh token
-func Logout(userID string) error {
-	result := initializers.DB.Where("user_id = ?", userID).Delete(&models.RefreshToken{})
-	return result.Error
-}
-
-const UserCtxKey = "user"
-
-// Function to extract user role from context
-func GetUserRoleFromJWT(ctx context.Context) (string, error) {
-	claims, ok := ctx.Value(UserCtxKey).(jwt.MapClaims)
-	if !ok {
-		return "", errors.New("unauthorized")
+// Helper function to get environment variable with default fallback
+func getEnvOrDefault(key, defaultValue string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
 	}
-	role, ok := claims["role"].(string)
-	if !ok {
-		return "", errors.New("role not found in token")
-	}
-	return role, nil
-}
-
-// Function to extract user from context
-func GetUserFromJWT(ctx context.Context) (jwt.MapClaims, bool) {
-	claims, ok := ctx.Value(UserCtxKey).(jwt.MapClaims)
-	if !ok {
-		fmt.Println("User not found in context")
-		return nil, ok
-	}
-	name, ok := claims["name"].(string)
-	if !ok {
-		fmt.Println("Name not found in token")
-	}
-	fmt.Println("Name:", name)
-	return claims, ok
+	return value
 }
