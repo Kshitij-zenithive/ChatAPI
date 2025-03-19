@@ -1,0 +1,208 @@
+# CRM Core GraphQL Schema
+scalar Time
+
+# Root schema definitions
+type Query {
+  # User queries
+  me: User!
+  user(id: ID!): User
+  users: [User!]!
+  
+  # Client queries
+  client(id: ID!): Client
+  clients(limit: Int = 10, offset: Int = 0): [Client!]!
+  searchClients(query: String!): [Client!]!
+  
+  # Chat queries
+  chatThread(id: ID!): ChatThread
+  chatThreads(clientId: ID!): [ChatThread!]!
+  chatMessages(threadId: ID!, limit: Int = 20, offset: Int = 0): [ChatMessage!]!
+  
+  # Email queries
+  email(id: ID!): Email
+  emails(clientId: ID!, limit: Int = 10, offset: Int = 0): [Email!]!
+  
+  # Timeline queries
+  timelineEvents(clientId: ID!, limit: Int = 20, offset: Int = 0): [TimelineEvent!]!
+}
+
+type Mutation {
+  # User mutations
+  login(email: String!, password: String!): AuthPayload!
+  register(input: RegisterInput!): AuthPayload!
+  updateUser(id: ID!, input: UpdateUserInput!): User!
+  deleteUser(id: ID!): Boolean!
+  
+  # Client mutations
+  createClient(input: CreateClientInput!): Client!
+  updateClient(id: ID!, input: UpdateClientInput!): Client!
+  deleteClient(id: ID!): Boolean!
+  
+  # Chat mutations
+  createChatThread(clientId: ID!): ChatThread!
+  sendChatMessage(threadId: ID!, content: String!, mentions: [ID!]): ChatMessage!
+  markChatMessagesAsRead(threadId: ID!): Boolean!
+  
+  # Email mutations
+  sendEmail(clientId: ID!, subject: String!, body: String!): Email!
+  fetchEmails(userId: ID!): Boolean!
+}
+
+type Subscription {
+  # Chat subscriptions
+  chatMessageAdded(threadId: ID!): ChatMessage!
+  chatMessageUpdated(threadId: ID!): ChatMessage!
+  
+  # Timeline subscriptions
+  timelineEventAdded(clientId: ID!): TimelineEvent!
+}
+
+# Auth types
+type AuthPayload {
+  token: String!
+  user: User!
+}
+
+# User types
+type User {
+  id: ID!
+  name: String!
+  email: String!
+  role: UserRole!
+  avatarUrl: String
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  AGENT
+}
+
+input RegisterInput {
+  name: String!
+  email: String!
+  password: String!
+  role: UserRole = AGENT
+}
+
+input UpdateUserInput {
+  name: String
+  email: String
+  password: String
+  role: UserRole
+  avatarUrl: String
+}
+
+# Client types
+type Client {
+  id: ID!
+  name: String!
+  email: String!
+  phone: String
+  company: String
+  avatarUrl: String
+  notes: String
+  tags: [String!]
+  assignedTo: User
+  createdAt: Time!
+  updatedAt: Time!
+  chatThreads: [ChatThread!]!
+  emails: [Email!]!
+  timelineEvents: [TimelineEvent!]!
+}
+
+input CreateClientInput {
+  name: String!
+  email: String!
+  phone: String
+  company: String
+  avatarUrl: String
+  notes: String
+  tags: [String!]
+  assignedToId: ID
+}
+
+input UpdateClientInput {
+  name: String
+  email: String
+  phone: String
+  company: String
+  avatarUrl: String
+  notes: String
+  tags: [String!]
+  assignedToId: ID
+}
+
+# Chat types
+type ChatThread {
+  id: ID!
+  client: Client!
+  title: String
+  createdAt: Time!
+  updatedAt: Time!
+  messages: [ChatMessage!]!
+  unreadCount: Int!
+}
+
+type ChatMessage {
+  id: ID!
+  threadId: ID!
+  user: User!
+  content: String!
+  mentions: [User!]
+  createdAt: Time!
+  updatedAt: Time!
+  readBy: [User!]!
+}
+
+# Email types
+type Email {
+  id: ID!
+  client: Client!
+  user: User!
+  subject: String!
+  body: String!
+  direction: EmailDirection!
+  status: EmailStatus!
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+enum EmailDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum EmailStatus {
+  DRAFT
+  SENT
+  RECEIVED
+  FAILED
+}
+
+# Timeline types
+type TimelineEvent {
+  id: ID!
+  client: Client!
+  user: User
+  type: EventType!
+  title: String!
+  description: String
+  referenceId: ID
+  referenceType: String
+  timestamp: Time!
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+enum EventType {
+  CLIENT_CREATED
+  EMAIL_SENT
+  EMAIL_RECEIVED
+  CHAT_STARTED
+  CHAT_MESSAGE
+  NOTE
+  TASK
+}
