@@ -70,6 +70,4 @@ Once the server is running, you can test the chat application by opening the cha
 
 - **Kshitij-zenithive**: [GitHub Profile](https://github.com/Kshitij-zenithive)
 
-## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
